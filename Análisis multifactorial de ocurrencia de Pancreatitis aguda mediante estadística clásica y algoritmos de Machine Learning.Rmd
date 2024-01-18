@@ -1,0 +1,495 @@
+---
+title: "Análisis multifactorial de ocurrencia de Pancreatitis aguda mediante estadística clásica y algoritmos de Machine Learning"
+date: "`r Sys.Date()`"
+Author: Sebastián Rojas
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+Por: **Sebastián Rojas** - *Universidad de Costa Rica*
+
+# Introducción 
+
+La pancreatitis aguda es un proceso de inflamación aguda en el páncreas (Lee & Papachristou 2019) caracterizada por dolor abdominal severo, amilasa y/o lipasa sérica elevada que a su vez son parte de su criterios diagnostico (Lee & Papachristou 2019; Mederos et al. 2021). Su fisiopatología viene de la afección de las vías de señalización de calcio, disfunción mitocondrial y del ER que en concordancia con el sistema inmune liberan una respuesta inflamatoria que lleva a la muerte de células acinares por autodigestión enzimática, las cuales constituyen las unidades funcionales del páncreas exocrino (Lee & Papachristou 2019; Huang et al. 2023).
+
+
+Esta es la condición gastrointestinal más común de las admisiones en hospitales en los Estados Unidos (Lee & Papachristou 2019) con una incidencia de 34 personas de cada 100 000 por año a nivel mundial (Lee & Papachristou 2019; Mederos et al. 2021). A su vez se ha asociado a una alta morbilidad y mortalidad, y dependiendo de su severidad puede llegar a tasas de mortalidad entre el 5-30% (Huang et al. 2023).
+
+
+La pancreatitis aguda es una enfermedad compleja, ya que es una enfermedad multifactorial, no obstante, dentro de estos destacan 3 causas principales: el acoholismo, enfermedades en vesículas biliares y la hypertriglicerodemia (Yang & McNabb 2020; Mederos et al. 2021). Donde particularmente los niveles de triglicéridos se han empleado para aproximar la severidad de la pancreatitis dada su alta correlación y aumento en falla multisistémica (Yang & McNabb 2020) esto por su asociación con el aumento de ácidos grados libres y la activasion de la respuesta inflamatoria (Lee & Papachristou 2019; Yang & McNabb 2020).
+
+## Justificación
+
+Dadas estas condiciones, a lo largo de los años se han desarrollado métodos para la detección temprana de la pancreatitis aguda, basados en modelos estadísticos, con la predicción por conjuntos de variables particulares, ejemplo de estos modelos el de Ranson de 1974, Imrie 1978, APACHEII de 1985 y el BISAP del 2008 (Mederos et al. 2021). Sin embargo, casi no hay estudios que revisen los factores que potencialmente afecten la severidad a través del aumento en triglicéridos y por tanto, por la hypertriglicerodemia (Huang et al. 2023; Yang & McNabb 2020). Que, aunque no es el factor más importante para predecir la pancreatitis aguda es un factor a la alza, pues en países como china las sus admisiones en hospitales han aumentado en un 21.2% mientras que la condiciones de la vesícula biliar han disminuido (Yang & McNabb 2020) 
+
+
+## Objetivos 
+- Estudiar las relaciones entre diversas patologías y la pancreatitis aguda.
+- Modelar el efecto de las patologías en la medida de triglicéridos en hipertrigliceridemia.
+
+# Metodología y Resultados
+Se inicia descargando el set de datos.  Este viene de la página [data.world](https://data.world/us-va-gov/3627f7a2-1276-455b-a77f-dc8a36c758ff/workspace/file?filename=no-id-ap1htg-dataset-2.csv). Como referencia se usa otro, en el cual vienen los [metadatos](https://data.world/us-va-gov/3627f7a2-1276-455b-a77f-dc8a36c758ff/workspace/file?filename=htg-acutepancr-var-labels-share-datadictionary-1.xlsx)
+
+```{r}
+library(readr)
+DT <- read.csv(file = "C:/Users/sebas/Desktop/UCR/R Avanzado/Proyecto final/DT crudo/no-id-ap1htg-dataset-2.csv", header = T, sep = ",")
+```
+
+En este caso se tienen 175 variables, de las cuales solo se van a usar la binarias sobre otras condiciones, los datos de triglicéridos, los datos de muertes y la etnia de la persona. 
+```{r}
+DT2 <- DT[,c(4,5,27:62,63,65,66,67,75,76,77,87,89,98,99,151:155,165,164,109)]
+```
+
+Se buscan los valores faltantes
+```{r}
+library(visdat)
+vis_miss(DT2, warn_large_data = FALSE)
+```
+
+Se elimaninan los NAs
+```{r}
+DT4 <- DT2[complete.cases(DT2),]
+```
+
+Se genera la variable de hypertrigliceridemia donde los valores de triglicéridos mayores a 150 mg/dL indican hypertriglicerodemia. Se generan 2 variables con los recuentos de condiciones previas y posteriores al diagnostico de la pancreatitis aguda. También se crea una variable par saber si la persona murió o sigue viva y se genera otra variable para identificar la etnia de la persona.  
+```{r}
+DT4$hypergli <- apply(X = DT4, 
+      MARGIN = 1, 
+      FUN = function(x) {
+  ifelse (x["TGclose"] >= 150, 1, 0)})
+DT4$cant_pre <- apply(X = DT4[, c(3:38,50,57,58)], 
+      MARGIN = 1, 
+      FUN = sum)
+DT4$cant_post <- apply(X = DT4[, c(48,49,51:54)], 
+      MARGIN = 1, 
+      FUN = sum)
+DT4$vivo <- apply(X= DT4,
+                     MARGIN = 1,
+                     FUN= function(x) {
+  if (x["died30d"] == 1) {
+    return(0)
+  } else if (x["died90d"] == 1) {
+    return(0)
+  } else if (x["died1yr"] == 1) {
+    return(0)
+  } else {
+    return(1)
+  }
+})
+DT4$etnia <- apply(X= DT4,
+                     MARGIN = 1,
+                     FUN= function(x) {
+  if (x["hisp"] == 1) {
+    return("hisp")
+  } else if (x["black"] == 1) {
+    return("black")
+  } else if (x["asian"] == 1) {
+    return("asian")
+  } else {
+    return("white")
+  }
+})
+```
+
+## Objetivo 1
+
+Como se tienen demasiadas variables, el primer acercamiento se puede hacer mendiente estadística multivariada. Para esto se va a hacer un PCA.
+
+```{r}
+library(ggfortify)
+DT4$sex <- as.numeric(DT4$sex == "M") #siendo hombre 1
+pca_res <- prcomp(DT4[, sapply(DT4, is.numeric)], scale. = TRUE)
+
+plot(pca_res$sdev^2 / sum(pca_res$sdev^2), 
+     xlab = "Componente Principal", ylab = "Proporción de Varianza Explicada",
+     ylim = c(0, 1), type = "b")
+```
+
+Con esto se puede ver que se requiere de los primeros 4 o 5 componentes principales para explicar mejor la variabilidad de los datos sin agregar contrubuciones poco significativas. 
+
+
+Se prueba seleccioanndo los componenetes principales con mayor porporcion de varianza explicada acumulada. 
+
+```{r}
+variance_explained <- (pca_res$sdev^2) / sum(pca_res$sdev^2)
+cumulative_variance <- cumsum(variance_explained)
+threshold <- 0.95
+selected_pcs <- which(cumulative_variance >= threshold)[1:4]
+selected_pcs
+```
+
+
+Se seleccionan las 5 más importantes para cada uno de los componentes principales a probar (1,2,3,4,50,51,52,53)
+
+```{r}
+vars_pc1 <- rownames(pca_res$rotation)[order(abs(pca_res$rotation[, 1]), decreasing = TRUE)[1:5]]
+vars_pc2 <- rownames(pca_res$rotation)[order(abs(pca_res$rotation[, 2]), decreasing = TRUE)[1:5]]
+vars_pc3 <- rownames(pca_res$rotation)[order(abs(pca_res$rotation[, 3]), decreasing = TRUE)[1:5]]
+vars_pc4 <- rownames(pca_res$rotation)[order(abs(pca_res$rotation[, 4]), decreasing = TRUE)[1:5]]
+vars_pc50 <- rownames(pca_res$rotation)[order(abs(pca_res$rotation[, 50]), decreasing = TRUE)[1:5]]
+vars_pc51 <- rownames(pca_res$rotation)[order(abs(pca_res$rotation[, 51]), decreasing = TRUE)[1:5]]
+vars_pc52 <- rownames(pca_res$rotation)[order(abs(pca_res$rotation[, 52]), decreasing = TRUE)[1:5]]
+vars_pc53 <- rownames(pca_res$rotation)[order(abs(pca_res$rotation[, 53]), decreasing = TRUE)[1:5]]
+
+variables_importantes <- unique(c(vars_pc1, vars_pc2, vars_pc3, vars_pc4))
+
+variables_importantes_1_2 <- unique(c(vars_pc1, vars_pc2))
+
+variables_importantes2 <- unique(c(vars_pc50, vars_pc51, vars_pc52, vars_pc53))
+
+ 
+```
+
+Se visualizan los compoenentes principales el efecto de las variables en estos  
+
+
+```{r}
+componentes <- c(1, 2)
+autoplot(pca_res, data = DT4, colour = 'etnia',
+              loadings = TRUE, loadings.label = TRUE, loadings.label.size = 3.5,
+              x = componentes[1], y = componentes[2]) +
+     geom_point(alpha = 0.5, color = NA)
+
+```
+
+```{r}
+componentes <- c(3, 4)
+autoplot(pca_res, data = DT4, colour = 'etnia',
+         loadings = TRUE, loadings.label = T, loadings.label.size = 3.5,
+         x = componentes[1], y = componentes[2]) +
+  geom_point(alpha = 0.5, color = NA)
+```
+
+```{r}
+componentes <- c(50, 51)
+autoplot(pca_res, data = DT4, colour = 'etnia',
+         loadings = TRUE, loadings.label = T, loadings.label.size = 3.5,
+         x = componentes[1], y = componentes[2]) +
+  geom_point(alpha = 0.5, color = NA)
+```
+
+```{r}
+componentes <- c(52, 53)
+autoplot(pca_res, data = DT4, colour = 'etnia',
+         loadings = TRUE, loadings.label = T, loadings.label.size = 3.5,
+         x = componentes[1], y = componentes[2]) +
+  geom_point(alpha = 0.5, color = NA)  
+```
+
+Con esto se concluye que la variabilidad de factores en la pancreatitis aguda se explica mejor por las variables:
+```{r}
+variables_importantes2
+```
+Esto porque estos componentes principales (50 al 53) acumulan la mayor proporción de la varianza. Estos se traducen en las siguienes condiciones: Insuficiencia cardiaca congestiva, Muerto a los 30 d,  Dislipidemia , Diabetes, Lipoproteínas de baja densidad (LDL), Muerto al año, Pancreatitis crónica post AP, Alcoholismo, Hepatitis, Lipoproteínas de alta densidad (HDL), Edad, Depresión, Infarto post AP, Fumado. 
+
+
+## Objetivo 2 con GLM
+
+Para modelar la cantidad de triglicéridos primero hay que  estudiar la variable. 
+
+Su distribución 
+```{r}
+hist(DT4$TGclose, breaks = 5, col = "tomato", main = "", labels = F, ylab = "", xlab = "")
+axis(1)
+axis(2, at = seq(0, 15, 3))
+
+par(new = T)
+plot(density(DT4$TGclose), axes = F, main = "", lwd = 3, col = "blue", xlab(""), ylab(""))
+axis(4, at = seq(-1, 1, 0.2))
+box(bty = "l",lwd = 1.1)
+mtext("Triglicéridos", side = 1, line = 3, cex = 1.25)
+mtext("Frecuencia", side = 2, line = 2.6, cex = 1.25)
+```
+La cual se puede ver que es una distribución gamma.
+
+Luego se verifica la interacción entre variables.
+```{r}
+library(corrplot)
+mat.cor <- cor(DT4[, sapply(DT4, is.numeric)])
+corrplot(corr = mat.cor)
+```
+Donde se ve que las columnas específicas de etnia, muertes y cantidad de enfermedades post covarían con otras variables o entre si, por tanto es mejor no usarlas en el glm. 
+
+```{r}
+library(dplyr)
+DT4$etnia <- as.factor(DT4$etnia)
+DT6 <- DT4
+DT4 <- select(DT4, -c("died30d", "died90d", "died1yr", "vivo", "hisp", "asian", "black", "white", "cant_post"))
+```
+
+
+### Se genera un GLM 
+
+Primero se extraen los primeros 4 componentes principales. Y se hacen 3 sets de datos, uno ignorando la variables resumidas por los primeros 2 componentes principales y otro que ignora las variables de los primeros 4. El ultimo ignora las variables resumidas en los componentes 50, 51, 52 y 53
+
+```{r}
+library(dplyr)
+PC <- as.data.frame(pca_res$x[, 1:4])
+PC2 <- as.data.frame(pca_res$x[, 50:53])
+DT5.2 <- cbind(PC[,1:2], select(DT4, -one_of(variables_importantes_1_2)))
+DT5.4 <- cbind(PC, select(DT4, -one_of(variables_importantes)))
+DT5.5 <- cbind(PC2, select(DT4, -one_of(variables_importantes2))) 
+```
+
+Se prueban varios modelos
+
+```{r}
+m0 <- glm(TGclose ~ 1, family = Gamma(link = "log"), 
+          data = DT4)
+m1 <- glm(TGclose ~ ., family = Gamma(link = "log"), 
+          data = DT5.2)
+m2 <- glm(TGclose ~ ., family = Gamma(link = "log"), 
+          data = DT5.4)
+m3 <- glm(TGclose ~ ., family = Gamma(link = "log"), 
+          data = DT5.5)
+m4 <- glm(TGclose ~ . , family = Gamma(link = "log"), 
+          data = DT4) 
+```
+
+
+verificamos el ajuste a la dispersión gamma
+```{r}
+with(m1, cbind(res.deviance = deviance, df = df.residual,
+  p = pchisq(deviance, df.residual, lower.tail=FALSE)))
+```
+Como se puede ver el valor de p es 1 entonces sí se ajusta a la distribución. Con lo cual se puede proceder a eligir un modelo de los propuestos con GLM. 
+```{r}
+AIC(m0, m1, m2, m3, m4)
+```
+
+
+Vemos el efecto de las variables con con m2 ya que por su AIC es  mejor modelo. 
+```{r}
+ci_df <- data.frame(param = names(m2$coefficients), 
+                    est = m2$coefficients, confint(m2))
+
+ggplot(ci_df, aes(x=param, y=est)) + 
+  geom_hline(yintercept = 0, color="red", lty = 2) +
+  geom_pointrange(aes(ymin = X2.5.., ymax = X97.5..)) + 
+  labs(x = "Parámetro", y = "Tamaño de efecto") + 
+  coord_flip()
+```
+
+Podemos verificar  el efecto de las variables y el porcentaje de variabilidad explicado por el modelo
+```{r}
+explicado <- 1 - (m2$deviance / m2$null.deviance)
+explicado
+```
+
+Donde se encuentra que según el gráfico anterior y los efectos estimados con chi2, afectan TGclose principalmente: 
+```{r}
+tabla<- anova(m2, test = "Chi")
+significant <- tabla[tabla$`Pr(>Chi)` < 0.001, ]
+significant
+```
+En total, considerando las variables más importantes de los 4 primeros componentes principales , pues estos son significativos según el chi2. TGclose parece estar determinado por:
+```{r}
+significant_vars_glm <- append(rownames(significant),variables_importantes)
+significant_vars_glm
+```
+Que se resume a los siguientes factores: Anemia, cáncer, osteoartritis, cataratas, hepatitis, obstrucción pulmonar crónica, diabetes, diverculitis, próstata alargada, gota, problemas de cadera, hipertensión, pulso irregular, dolor de espalda baja, cáncer de piel, afecciones de tiroides, infección de tracto urinario, bipolaridad, PTSD, dislipidemia, HDL, piedras en la vesícula, infarto post AP, enfermedades post AP, Edad, prostatitis, etnia, prostatitis crónica post AP, muertes a los 30 d 90d y el año, alcoholismo, depresión, vivo, ansiedad, insuficiencia cardiaca congestiva y convulsiones. 
+
+### Evaluación
+
+Se evalúa el desempeño del modelo elegido.
+
+```{r}
+library(lmtest)
+library(car)
+library(ggplot2)
+
+plot_nor <- plot(m4, which = 2)  # Para evaluar la normalidad de los residuos
+plot_homoced <- plot(m4, which = 3)  # Homocedasticidad con residuos estandarizados
+
+bptest_result <- bptest(m4)  # Prueba de heterocedasticidad
+ks_result <- ks.test(resid(m4), "pnorm")  # Prueba de normalidad
+
+layout(matrix(c(1, 2), ncol = 2))
+
+# Primer gráfico
+par(mar = c(7, 5, 7, 5))
+plot(m4, which = 2)
+box(bty = "l", lwd = 1.1)
+mtext(paste("Kolmogorov-Smirnov Test p-value:", format(ks_result$p.value, scientific = TRUE)), side = 1, line = 4, adj = 0, cex = 0.8)
+
+# Segundo gráfico
+par(mar = c(7, 5, 7, 5))
+plot(m4, which = 3)
+box(bty = "l", lwd = 1.1)
+mtext(paste("Breusch-Pagan Test p-value:", format(bptest_result$p.value, scientific = TRUE)), side = 1, line = 4, adj = 0, cex = 0.8)
+
+# Restaura el diseño a la configuración predeterminada
+layout(1)
+
+```
+
+Con esto podemos ver que en realidad el modelo no cumple muy bien algunos supuestos porque hay observaciones problemáticas. Pues hay ajustes parciales a los supuestos. 
+
+
+## Objetivo 2 con machine learning
+
+Para esto se requieren las variables en formato numérico, de modo que no se van a usar la variable etnia.
+Se inicia generando los sets de datos de entrenamiento y prueba, mediante la partición de los datos y asignando un 75% y 25% de los datos para cada set de datos respectivamente. Estas particiones se usarán para a TGclose. Además se establece una semilla para los parámetros para que no se obtengan resultados distintos cada vez que se corra el código.
+```{r}
+library(ranger)
+library(lattice)
+library(caret)
+
+
+DT_ML<- DT6[, c(-53)]
+set.seed(123)
+inTrain <- createDataPartition(y=DT_ML$TGclose,p=0.75, list=FALSE)
+training <- DT_ML[inTrain,]
+testing <- DT_ML[-inTrain,]
+```
+
+Se inicia modelando con un modelo de regresión de vecino más cercano (KNN). Esto por las siguientes razones:
+
+- No linealidad: El algoritmo KNN no asume una relación lineal entre las variables predictoras y la variable de respuesta.
+
+- Flexibilidad: Ya que es un algoritmo no paramétrico, lo que significa que no hace suposiciones específicas sobre la distribución subyacente de los datos.
+
+- Información espacial: El algoritmo KNN utiliza la información espacial al buscar los vecinos más cercanos en función de TGclose. Esto puede ser útil para capturar patrones espaciales.
+
+- Interacción entre variables: Es probable que exista una interacción entre las variables predictoras. KNN es capaz de capturar estas interacciones ya que utiliza todas las variables predictoras en el cálculo de la distancia entre los vecinos.
+
+Para esto se inicia con el preprocesamiento de los datos con el método de "center" y "sacale" que centra y escala las variables, este preprocesamiento se usa para escalar los sets de entrenamiento y prueba, normalizando y estandarizando los datos. Con el cuidado de no escalar a TGclose pues se pierde la interpretabilidad de este, por lo cual una vez escaladas las demás variables se agrega TGclose.
+```{r}
+exclude_cols <- c("TGclose")
+preproc <- preProcess(training[, setdiff(names(training), exclude_cols)], method = c("center", "scale"))
+predictor_vars <- setdiff(names(training), c("TGclose"))
+scaled_training <- predict(preproc, training[, predictor_vars])
+scaled_training <- cbind(scaled_training, TGclose= training[, "TGclose"])
+scaled_testing <- predict(preproc, testing[, predictor_vars])
+scaled_testing <- cbind(scaled_testing, TGclose= testing[, "TGclose"])
+
+```
+
+Luego se establecen los parámetros de control del modelo, se usa el método de validación cruzada "cv" con esto se pretende evaluar el modelo n cantidad de veces porque se hace n cantidad de subconjuntos entonces se evalúa de manera repetida. En este caso se usa un valor de 7 pues es equilibrado computacionalmente y la precisión de la estimación del rendimiento. 
+```{r}
+k <- 7
+ctrl <- trainControl(method = "cv", number = k)
+```
+
+Ya con esto se ejecuta el modelo, para predecir TGclose en función de todas la variables usadas. Además se revierte la normalización hecha anteriormente para que los resultados sean interpretables y graficables.
+```{r}
+m_ML <- train(TGclose ~ ., data = scaled_training, method = "knn", trControl = ctrl)
+prediccion <- predict(m_ML, scaled_testing)
+```
+
+Ahora se buscan las variables más importantes para el modelo
+```{r}
+importance <- varImp(m_ML)
+important_vars <- rownames(importance$importance)[1:20]#Las primeras 20
+importance
+```
+
+
+## Comparación 
+
+```{r}
+library(caret)
+predicciones <- predict(m2, newdata = DT5.4, type = "response")
+
+# El RMSE, R-squared y MAE
+rmse <- sqrt(mean((DT4$TGclose - predicciones)^2))
+rsquared <- cor(DT4$TGclose, predicciones)^2
+mae <- mean(abs(DT4$TGclose - predicciones))
+
+tabla_resultados <- tibble(RMSE = rmse,R_squared = rsquared,MAE = mae)
+print(tabla_resultados)
+```
+
+
+```{r}
+precision <- postResample(prediccion, testing$TGclose)
+print(precision)
+```
+Donde se puede ver que el "Root median square error" RMSE dice que la diferencia aproximada de los valores observados y predichos es menor en el GLM. El Rsquared por su parte referencia el ajuste y por tanto, qué tanta de la variabilidad explica el modelo donde el GLM explicó un 67% de los datos. El MAE nos indica lo mismo que el RMSE siendo menor en el GLM. 
+
+Se comparan las predicciones de ambos modelos 
+
+```{r}
+predictions <- predict(m_ML, scaled_testing)
+newdata <- DT4[,-49] #quitamos la variable respuesta TGclose 
+
+newdata2 <- cbind(newdata, predict(m4, newdata, type = "response", se.fit = TRUE))
+# Crear un data frame con los resultados
+results <- data.frame(Observado = scaled_testing$TGclose, Predicho = predictions)
+
+results1 <- data.frame(Observado = DT4$TGclose, Predicho = newdata2$fit)
+
+results$Dataset <- "Machine Learning"
+results1$Dataset <- "GLM (m4)"
+
+# Unir los dos conjuntos de datos
+combined_data <- rbind(results, results1)
+
+# Crear un gráfico usando facet_grid
+texto1 <- data.frame(
+  x = 3000,
+  y = 7000,
+  label = "RMSE=133 R_squared= 0.68 MAE= 75",
+  Dataset = "GLM (m4)"
+)
+texto2 <- data.frame(
+  x = 3000,
+  y = 7000,
+  label = "RMSE=137 R_squared= 0.42 MAE= 84",
+  Dataset = "Machine Learning"
+)	
+
+gg_combined <- ggplot(combined_data, aes(x = Observado, y = Predicho)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(x = "Observado", y = "Predicho") +
+  theme_minimal() + theme(axis.text = element_text(size = 12))+
+  geom_text(data = texto1, aes(x = x, y = y, label = label), size = 3, vjust = -0.5)+
+  geom_text(data = texto2, aes(x = x, y = y, label = label), size = 3, vjust = -0.5)+
+  facet_grid(. ~ Dataset)
+print(gg_combined)
+
+```
+Donde se puede ver que el GLM tuvo mejores predicciones, pues pudo determinar más valores extremos. 
+Con lo cual a nivel general la precisión no es la mejor pero si consideramos la desviación estándar de la variable tiene un ajuste significativo. 
+```{r}
+sd(DT4$TGclose)
+```
+
+A pesar de que el modelo tiene deficiencias en los supuestos sus conclusiones tienen sentido. Por tanto se da prioridad a las variables predicas por el GLM. 
+
+# Discusión y conclusiones
+Como se puede apreciar, en el caso de la pancreatitis aguda hay muchas variables involucradas entre las cuales encontramos muchas asociadas al metabolismo de grasas como como lo son HDL, VDL, dislipidemia (Yang & McNabb 2020; Huang et al. 2023) con lo cual tiene sentido que estén asociadas a la cantidad de triglicéridos medidos en sangre. Dentro de esas variables destacan un grupo que competen al perfil psiquiátrico de la persona, como la depresión, pero en el caso de la predicción de triglicéridos se encontraron más como la asiedad y PTSD. Aspecto que ya se ha encontrado antes pues factores de esta índole son parte del sistema de predicción más reciente el BISAP (Arif et al. 2019). 
+
+
+Por otro lado, se encuentran condiciones como la diabetes que por la resistencia a insulina promueven la inflamación favoreciendo la liberación de citoquinas, que pueden exacerbar la progresión de la pancreatitis (Huang et al. 2023). Condición que también está ligada a cambios en el metabolismo de lípidos y por tanto se relaciona a factores como las HLD y VDL (Huang et al. 2023).
+
+
+Otro conjunto de variables encontradas, pero asociadas a próstata y cáncer también tienen sentido, pues hay una correlación entre fármacos usados para tratar los triglicéridos como statinas y no estatinas que se han visto asociado a cáncer y particularmente cáncer de próstata (Marrone et al. 2023). Por otra parte, varias investigaciones en este mismo sentido, que involucran elementos del metabolismo de grasas han evidenciado diferencias según la etnia de la persona, pues si hay un aumento del riesgo en hombres blancos, pero no en hombres negros (Marrone et al. 2023) Con lo cual la etnia y el sexo son factores importantes en la determinación de los triglicéridos como se encontró en las variables más importantes. 
+
+
+De modo que se puede concluir que en efecto hay muchas variables que afectan la pancreatitis aguda y triglicéridos en sangre. Haciendo énfasis de que hay muchas variables interconectadas que covarían con AP y TG y las relacionan de formas complejas. Además es importante agregar que estso complejos de variables son capaces de predecir los niveles de TG, con lo cual más estudios podrían generar nuevos algoritmos de predicción. 
+
+
+# Referencias
+- Huang, Y., Zhu, Y., Peng, Y., Xia, W., Chen, L., Yu, H., ... & Su, N. (2023). Triglycerides to high‐density lipoprotein cholesterol (TG/HDL‐C) ratio is an independent predictor of the severity of hyperlipidaemic acute pancreatitis. Journal of Hepato‐Biliary‐Pancreatic Sciences, 30(6), 784-791.
+
+
+- Yang, A. L., & McNabb-Baltar, J. (2020). Hypertriglyceridemia and acute pancreatitis. Pancreatology, 20(5), 795-800.
+Mederos, M. A., Reber, H. A., & Girgis, M. D. (2021). Acute pancreatitis: a review. Jama, 325(4), 382-390.
+
+
+- Lee, P. J., & Papachristou, G. I. (2019). New insights into acute pancreatitis. Nature reviews Gastroenterology & hepatology, 16(8), 479-496.
+
+
+- Marrone, M. T., Prizment, A. E., Couper, D., Butler, K. R., Astor, B. C., Joshu, C. E., ... & Mondul, A. M. (2023). Total‐, LDL‐, and HDL‐cholesterol, apolipoproteins, and triglycerides with risk of total and fatal prostate cancer in Black and White men in the ARIC study. The Prostate.
+
+
+- Arif, A., Jaleel, F., & Rashid, K. (2019). Accuracy of BISAP score in prediction of severe acute pancreatitis. Pakistan journal of medical sciences, 35(4), 1008.
+
